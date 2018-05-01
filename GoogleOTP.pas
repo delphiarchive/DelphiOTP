@@ -1,9 +1,12 @@
+{###############################################################################
+                      https://github.com/wendelb/DelphiOTP
+###############################################################################}
 unit GoogleOTP;
 
 interface
 
 uses
-  System.SysUtils, System.Math, Base32U, IdGlobal, IdHMACSHA1;
+  System.SysUtils, System.Math, Base32U, IdGlobal, IdHMACSHA1, System.DateUtils;
 
 (*
 
@@ -26,12 +29,14 @@ Easy Display: Format('%.6d', [CalculateOTP(SECRET)]);
 
 function CalculateOTP(const Secret: String; const Counter: Integer = -1): Integer;
 function ValidateTOPT(const Secret: String; const Token: Integer; const WindowSize: Integer = 4): Boolean;
+function GenerateOTPSecret(len: Integer = -1): String;
 
 implementation
 
 const
   otpLength = 6;
   keyRegeneration = 30;
+  SecretLengthDef = 20;
 
 /// <summary>
 ///   Sign the Buffer with the given Key
@@ -60,12 +65,13 @@ end;
 
 /// <summary>
 ///   Converts a TDateTime into the corresponding Unix Timestamp.
-///   From http://www.delphipraxis.net/4278-datetime-unixtimestamp-und-zurueck.html
 /// </summary>
 function CodeUnixDateTime(DatumZeit: TDateTime): Integer;
+var
+  wYear, wMonth, wDay, wHour, wMinute, wSecond, wMilliseconds: Word;
 begin
-  Result := ((Trunc(DatumZeit) - 25569) * 86400) +
-            Trunc(86400 * (DatumZeit - Trunc(DatumZeit))) - 7200;
+  DecodeDateTime(DatumZeit, wYear, wMonth, wDay, wHour, wMinute, wSecond, wMilliseconds);
+  Result := Round((EncodeDate(wYear, wMonth, wDay) - UnixDateDelta + EncodeTime(wHour, wMinute, wSecond, wMilliseconds)) * SecsPerDay);
 end;
 
 /// <summary>
@@ -97,9 +103,9 @@ var
 begin
 
   if Counter <> -1 then
-    Time = Counter
+    Time := Counter
   else
-    Time := CodeUnixDateTime(now()) div keyRegeneration;
+    Time := CodeUnixDateTime(TTimeZone.Local.ToUniversalTime(Now)) div keyRegeneration;
 
   BinSecret := Base32.Decode(Secret);
   Hash := BytesToStringRaw(HMACSHA1(StrToIdBytes(BinSecret), ReverseIdBytes(ToBytes(Int64(Time)))));
@@ -121,7 +127,7 @@ var
 begin
   Result := false;
 
-  TimeStamp := CodeUnixDateTime(now()) div keyRegeneration;
+  TimeStamp := CodeUnixDateTime(TTimeZone.Local.ToUniversalTime(Now)) div keyRegeneration;
   for TestValue := Timestamp - WindowSize to TimeStamp + WindowSize do
   begin
     if (CalculateOTP(Secret, TestValue) = Token) then
@@ -129,5 +135,21 @@ begin
   end;
 end;
 
+function GenerateOTPSecret(len: Integer = -1): String;
+var
+  i : integer;
+  ValCharLen : integer;
+begin
+  Result := '';
+  ValCharLen := Length(Base32U.ValidChars);
+
+  if (len < 1) then
+    len := SecretLengthDef;
+
+  for i := 1 to len do
+  begin
+    Result := Result + copy(Base32U.ValidChars, Random(ValCharLen) + 1, 1);
+  end;
+end;
 
 end.
